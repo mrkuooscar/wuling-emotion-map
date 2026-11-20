@@ -1,0 +1,1467 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>情緒定格地圖 — 武陵高中手帳版</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Google Fonts: 手帳感字體 -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@500;700&display=swap" rel="stylesheet">
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <style>
+    :root {
+      --bg-paper: #F9F6F0;
+      --card-paper: #FFFDF9;
+      --ink-main: #2C2A29;
+      --ink-muted: #78716C;
+      --border-paper: #E5DEC9;
+      --accent-rust: #D96B43;
+    }
+
+    body {
+      background-color: var(--bg-paper);
+      color: var(--ink-main);
+      font-family: 'Noto Sans TC', sans-serif;
+      background-image:
+        linear-gradient(to right, rgba(214, 206, 191, 0.25) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(214, 206, 191, 0.25) 1px, transparent 1px);
+      background-size: 24px 24px;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .font-serif-tc {
+      font-family: 'Noto Serif TC', serif;
+    }
+
+    /* 手帳卡片質感 */
+    .journal-card {
+      background-color: var(--card-paper);
+      border: 1px solid var(--border-paper);
+      box-shadow: 0 4px 14px rgba(44, 42, 41, 0.04);
+    }
+
+    /* 地圖容器 */
+    #map {
+      height: 520px;
+      width: 100%;
+      border-radius: 0.75rem;
+      z-index: 10;
+      background-color: #EFECE6;
+    }
+
+    @media (max-width: 768px) {
+      #map {
+        height: 410px;
+      }
+    }
+
+    /* 手帳淡雅底圖濾鏡 */
+    .journal-tiles .leaflet-tile-pane {
+      filter: sepia(0.24) saturate(0.85) brightness(1.03) contrast(0.95);
+    }
+
+    /* 迷你手帳貼紙氣泡 */
+    .leaflet-popup-content-wrapper {
+      background-color: #FFFDF9 !important;
+      color: #2C2A29 !important;
+      border: 1px solid #DCD3BE !important;
+      border-radius: 10px !important;
+      box-shadow: 0 4px 12px rgba(44, 42, 41, 0.14) !important;
+      padding: 0 !important;
+    }
+    .leaflet-popup-content {
+      margin: 7px 10px !important;
+      font-family: 'Noto Sans TC', sans-serif !important;
+      line-height: 1.35 !important;
+      min-width: 120px !important;
+      max-width: 175px !important;
+    }
+    .leaflet-popup-tip {
+      background-color: #FFFDF9 !important;
+      border: 1px solid #DCD3BE !important;
+    }
+    .leaflet-container a.leaflet-popup-close-button {
+      top: 3px !important;
+      right: 4px !important;
+      width: 16px !important;
+      height: 16px !important;
+      font-size: 13px !important;
+      line-height: 16px !important;
+      color: #8C8276 !important;
+      padding: 0 !important;
+    }
+
+    /* 迷你手帳貼紙內部排版 */
+    .sticker-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 4px;
+      padding-right: 12px;
+      margin-bottom: 3px;
+    }
+    .sticker-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      padding: 1px 5px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 700;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .sticker-time {
+      font-size: 9px;
+      color: #78716C;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .sticker-place {
+      font-size: 10.5px;
+      font-weight: 700;
+      color: #2C2A29;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      border-top: 1px dashed #EAE2D0;
+      padding-top: 3px;
+      margin-bottom: 2px;
+    }
+    .sticker-note {
+      font-size: 10px;
+      color: #57534E;
+      line-height: 1.3;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* 水彩情緒光點 */
+    .mood-pin {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 12px;
+      box-shadow: 0 0 0 3px rgba(255, 253, 249, 0.92), 0 3px 8px rgba(0, 0, 0, 0.22);
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+      cursor: pointer;
+    }
+    .mood-pin:hover {
+      transform: scale(1.18);
+    }
+
+    /* 脈衝 GPS 藍色定位點 */
+    .gps-pulse-dot {
+      width: 14px;
+      height: 14px;
+      background-color: #2563EB;
+      border: 2.5px solid #FFFFFF;
+      border-radius: 50%;
+      box-shadow: 0 0 0 rgba(37, 99, 235, 0.45);
+      animation: pulse-gps 2s infinite;
+    }
+    @keyframes pulse-gps {
+      0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.6); }
+      70% { box-shadow: 0 0 0 14px rgba(37, 99, 235, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+    }
+
+    /* 地圖中心手帳準星 */
+    .map-crosshair {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 450;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .crosshair-ring {
+      width: 24px;
+      height: 24px;
+      border: 2px dashed #D96B43;
+      border-radius: 50%;
+      background-color: rgba(217, 107, 67, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .crosshair-dot {
+      width: 4px;
+      height: 4px;
+      background-color: #D96B43;
+      border-radius: 50%;
+    }
+    .crosshair-label {
+      margin-top: 2px;
+      background-color: rgba(44, 42, 41, 0.82);
+      color: #FFFDF9;
+      font-size: 9px;
+      padding: 1px 5px;
+      border-radius: 4px;
+      white-space: nowrap;
+      letter-spacing: 0.03em;
+    }
+
+    /* 自訂捲軸 */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #D6CEBF;
+      border-radius: 9999px;
+    }
+
+    /* 鈴聲提醒呼吸動畫 */
+    @keyframes chime-bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-2px); }
+    }
+    .animate-chime {
+      animation: chime-bounce 1.8s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- 整點提醒橫幅 (到達整點或測試時彈出) -->
+  <div id="hourly-banner" class="hidden sticky top-0 z-[950] bg-[#D96B43] text-white px-4 py-2.5 shadow-md">
+    <div class="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2">
+      <div class="flex items-center gap-2 text-xs sm:text-sm font-medium">
+        <span class="text-base animate-chime">🔔</span>
+        <span id="hourly-banner-text">整點時間到了！花 10 秒定格這個小時的心情吧。</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="openRecordFromBanner()" class="px-3 py-1 rounded-full bg-white text-[#D96B43] text-xs font-bold shadow-sm hover:bg-amber-50 transition">
+          立即記錄此小時
+        </button>
+        <button onclick="dismissHourlyBanner()" class="px-2 py-1 rounded-full text-white/80 hover:text-white text-xs">
+          稍後
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 頂部導覽列 -->
+  <header class="max-w-6xl w-full mx-auto px-3 sm:px-6 pt-3 sm:pt-5 pb-2">
+    <div class="journal-card rounded-2xl p-3 sm:p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-2.5 sm:gap-3">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="text-lg sm:text-xl">📖</span>
+          <h1 class="font-serif-tc text-lg sm:text-2xl font-bold tracking-wide text-[#2C2A29]">情緒定格地圖</h1>
+          <span class="text-[11px] sm:text-xs px-2 py-0.5 rounded-full bg-[#EFE9DC] text-[#6B635B] border border-[#DFD6C3]">武陵高中專屬版</span>
+        </div>
+        <p class="text-[11px] sm:text-xs text-[#78716C] mt-0.5 sm:mt-1">「一瞬間消失的情感，定位在了時間與地圖／時間線軌跡上。」</p>
+      </div>
+
+      <!-- 視圖切換與新增按鈕 -->
+      <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
+        <button id="tab-map-btn" onclick="switchTab('map')" class="px-3 py-1.5 rounded-xl text-xs sm:text-sm font-medium bg-[#2C2A29] text-white shadow-sm transition whitespace-nowrap">
+          🗺️ 校園地圖與軌跡
+        </button>
+        <button id="tab-chart-btn" onclick="switchTab('chart')" class="px-3 py-1.5 rounded-xl text-xs sm:text-sm font-medium bg-[#F3EFE6] text-[#57534E] hover:bg-[#E8E1D3] transition whitespace-nowrap">
+          📊 1~2週數據分析
+        </button>
+        <button onclick="openRecordModal()" class="px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold bg-[#D96B43] text-white hover:bg-[#C25A34] shadow-sm transition flex items-center gap-1 whitespace-nowrap">
+          <span>＋</span> 定格此時情緒
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主內容區塊 -->
+  <main class="max-w-6xl w-full mx-auto px-3 sm:px-6 pb-10 flex-1">
+
+    <!-- ==================== 視圖 1：地圖與時間軸 ==================== -->
+    <section id="view-map" class="space-y-3">
+
+      <!-- GPS 狀態、每小時整點提醒 與 精簡工具列 -->
+      <div class="journal-card rounded-xl px-3 py-2 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 text-xs">
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <!-- GPS 狀態 -->
+          <div class="flex items-center gap-1.5">
+            <span id="gps-status-icon">📡</span>
+            <span id="gps-status-text" class="text-[#57534E] font-medium">正在偵測 GPS 定位狀態...</span>
+          </div>
+
+          <span class="hidden sm:inline text-[#D6CEBF]">|</span>
+
+          <!-- 每小時整點提醒控制 -->
+          <div class="flex items-center gap-2">
+            <label class="inline-flex items-center gap-1.5 cursor-pointer select-none font-medium text-[#2C2A29] whitespace-nowrap">
+              <input type="checkbox" id="hourly-remind-toggle" onchange="toggleHourlyReminder()" class="rounded text-[#D96B43] focus:ring-0" />
+              <span>🔔 整點紀錄提醒</span>
+            </label>
+            <span id="hourly-countdown" class="text-[11px] px-2 py-0.5 rounded-full bg-[#F3EFE6] text-[#6B635B] whitespace-nowrap">已關閉</span>
+            <button onclick="triggerHourlyReminder(true)" title="試聽提醒鈴聲與橫幅" class="text-[11px] underline text-[#8C8276] hover:text-[#2C2A29] whitespace-nowrap">
+              試聽
+            </button>
+          </div>
+        </div>
+
+        <!-- 精簡操作列：只留左邊三個 + 右側「其他」下拉選單 -->
+        <div class="flex flex-wrap items-center gap-1.5">
+          <button onclick="centerToWuling()" class="px-2.5 py-1 rounded-lg bg-[#F5F1E8] hover:bg-[#EAE3D5] text-[#44403C] border border-[#E2D9C8] transition whitespace-nowrap inline-flex items-center gap-1 shrink-0">
+            <span>🏫</span><span>武陵校區 C 位</span>
+          </button>
+
+          <button onclick="requestGPS(true)" class="px-2.5 py-1 rounded-lg bg-[#F5F1E8] hover:bg-[#EAE3D5] text-[#44403C] border border-[#E2D9C8] transition whitespace-nowrap inline-flex items-center gap-1 shrink-0">
+            <span>🎯</span><span>抓取當前 GPS</span>
+          </button>
+
+          <label class="px-2.5 py-1 rounded-lg bg-[#F5F1E8] hover:bg-[#EAE3D5] text-[#44403C] border border-[#E2D9C8] cursor-pointer inline-flex items-center gap-1.5 select-none transition whitespace-nowrap shrink-0">
+            <input type="checkbox" id="toggle-polyline" checked onchange="renderMarkers()" class="rounded text-[#D96B43] focus:ring-0" />
+            <span>🧵 時間軌跡連線</span>
+          </label>
+
+          <!-- 其他選單 (收納底圖切換、匯出備份、匯入還原) -->
+          <div class="relative shrink-0" id="more-menu-container">
+            <button type="button" onclick="toggleMoreMenu(event)" class="px-2.5 py-1 rounded-lg bg-[#EFE9DC] hover:bg-[#E4DCCB] text-[#2C2A29] font-medium border border-[#D8CEBA] transition whitespace-nowrap inline-flex items-center gap-1">
+              <span>⋯ 其他</span>
+              <span class="text-[10px]">▾</span>
+            </button>
+
+            <div id="more-menu-dropdown" class="hidden absolute right-0 mt-1.5 w-44 journal-card rounded-xl shadow-lg py-1.5 z-[600] border border-[#DCD3BE]">
+              <button type="button" onclick="toggleMapStyle(); closeMoreMenu();" id="btn-map-style" class="w-full text-left px-3 py-2 text-xs text-[#2C2A29] hover:bg-[#F5F1E8] flex items-center gap-2 whitespace-nowrap">
+                <span>📜</span><span>切換原始底圖</span>
+              </button>
+              <div class="border-t border-[#EFE9DC] my-1"></div>
+              <button type="button" onclick="exportJSON(); closeMoreMenu();" class="w-full text-left px-3 py-2 text-xs text-[#2C2A29] hover:bg-[#F5F1E8] flex items-center gap-2 whitespace-nowrap">
+                <span>💾</span><span>匯出備份 (JSON)</span>
+              </button>
+              <button type="button" onclick="triggerImportJSON(); closeMoreMenu();" class="w-full text-left px-3 py-2 text-xs text-[#2C2A29] hover:bg-[#F5F1E8] flex items-center gap-2 whitespace-nowrap">
+                <span>📂</span><span>匯入還原紀錄</span>
+              </button>
+            </div>
+          </div>
+
+          <input type="file" id="import-json-input" accept=".json" onchange="handleImportJSON(event)" class="hidden" />
+        </div>
+      </div>
+
+      <!-- 心情標籤篩選器 -->
+      <div class="journal-card rounded-xl px-3.5 py-2.5 flex flex-wrap items-center gap-2">
+        <span class="text-xs font-medium text-[#78716C] mr-1 whitespace-nowrap">篩選心情：</span>
+        <button onclick="setFilter('all')" data-filter="all" class="filter-pill px-3 py-1 rounded-full text-xs font-medium bg-[#2C2A29] text-white transition whitespace-nowrap">
+          ✨ 全部情緒 (<span id="count-all">0</span>)
+        </button>
+        <button onclick="setFilter('calm')" data-filter="calm" class="filter-pill px-3 py-1 rounded-full text-xs font-medium bg-[#E8F1EC] text-[#3B6E54] border border-[#C7DDD1] hover:opacity-80 transition whitespace-nowrap">
+          🌿 平靜/放空 (<span id="count-calm">0</span>)
+        </button>
+        <button onclick="setFilter('happy')" data-filter="happy" class="filter-pill px-3 py-1 rounded-full text-xs font-medium bg-[#FDF3D7] text-[#9A6B16] border border-[#F3DFA4] hover:opacity-80 transition whitespace-nowrap">
+          ☀️ 期待/開心 (<span id="count-happy">0</span>)
+        </button>
+        <button onclick="setFilter('anxious')" data-filter="anxious" class="filter-pill px-3 py-1 rounded-full text-xs font-medium bg-[#FCE8E2] text-[#A84327] border border-[#F3C6B8] hover:opacity-80 transition whitespace-nowrap">
+          🌧️ 焦慮/煩躁 (<span id="count-anxious">0</span>)
+        </button>
+        <button onclick="setFilter('lonely')" data-filter="lonely" class="filter-pill px-3 py-1 rounded-full text-xs font-medium bg-[#ECE9F6] text-[#554982] border border-[#D4CEEC] hover:opacity-80 transition whitespace-nowrap">
+          🌙 孤獨/感傷 (<span id="count-lonely">0</span>)
+        </button>
+      </div>
+
+      <!-- 地圖與時間軸雙欄配置 -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <!-- 左側地圖區 (7欄) -->
+        <div class="lg:col-span-7 journal-card rounded-2xl p-3 flex flex-col">
+          <div class="flex items-center justify-between text-[11px] text-[#78716C] mb-2 px-1">
+            <span>📍 點擊地圖任意建築／角落，或對準中央準星記錄該時段情緒</span>
+            <span class="font-mono">武陵校區 · 1小時區間</span>
+          </div>
+
+          <div class="relative flex-1 rounded-xl overflow-hidden border border-[#E5DEC9]">
+            <div id="map" class="journal-tiles"></div>
+            <!-- 地圖中心手帳準星 -->
+            <div class="map-crosshair" title="移動地圖可將準星對準任一建築">
+              <div class="crosshair-ring">
+                <div class="crosshair-dot"></div>
+              </div>
+              <span class="crosshair-label">定位點</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右側時間軸區 (5欄) -->
+        <div class="lg:col-span-5 journal-card rounded-2xl p-4 flex flex-col h-[480px] lg:h-[568px]">
+          <div class="flex items-center justify-between border-b border-[#EFE9DC] pb-2.5 mb-3">
+            <h2 class="font-serif-tc font-bold text-base text-[#2C2A29] flex items-center gap-1.5">
+              <span>🕒</span> 情緒時間軸（每小時）
+            </h2>
+            <span class="text-[11px] text-[#8C8276]">點擊卡片定位地圖點</span>
+          </div>
+
+          <!-- 時間軸列表容器 -->
+          <div id="timeline-list" class="flex-1 overflow-y-auto pr-1 space-y-2.5">
+            <!-- 由 JS 動態渲染 -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== 視圖 2：1~2週數據分析圖表 ==================== -->
+    <section id="view-chart" class="hidden space-y-4">
+      <div class="journal-card rounded-2xl p-5">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-[#EFE9DC] pb-4 mb-5">
+          <div>
+            <h2 class="font-serif-tc text-lg font-bold text-[#2C2A29]">📊 1～2 週情緒與時段軌跡分析</h2>
+            <p class="text-xs text-[#78716C] mt-0.5">以「一小時」為單位觀察校園與通勤日常的情緒分佈規律</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button onclick="exportCSV()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#2C2A29] text-white hover:bg-[#44403C] transition">
+              📥 匯出 CSV 表格
+            </button>
+            <button onclick="exportJSON()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#F3EFE6] text-[#2C2A29] border border-[#DCD3BE] hover:bg-[#E8E1D3] transition">
+              💾 匯出備份檔 (JSON)
+            </button>
+            <button onclick="askClearAll()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#FCE8E2] text-[#A84327] hover:bg-[#F8D5CB] transition">
+              🗑️ 清空全部紀錄
+            </button>
+          </div>
+        </div>
+
+        <!-- 數據摘要卡片 -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+          <div class="p-3.5 rounded-xl bg-[#F9F6F0] border border-[#E6DFD1]">
+            <div class="text-xs text-[#78716C]">累積定格時段</div>
+            <div id="stat-total" class="font-serif-tc text-2xl font-bold text-[#2C2A29] mt-1">0 筆</div>
+          </div>
+          <div class="p-3.5 rounded-xl bg-[#F9F6F0] border border-[#E6DFD1]">
+            <div class="text-xs text-[#78716C]">最常出現情緒</div>
+            <div id="stat-top-mood" class="font-serif-tc text-xl font-bold text-[#D96B43] mt-1">尚無資料</div>
+          </div>
+          <div class="p-3.5 rounded-xl bg-[#F9F6F0] border border-[#E6DFD1]">
+            <div class="text-xs text-[#78716C]">高頻情緒熱點</div>
+            <div id="stat-top-place" class="font-serif-tc text-base font-bold text-[#2C2A29] mt-1.5 truncate">尚無資料</div>
+          </div>
+          <div class="p-3.5 rounded-xl bg-[#F9F6F0] border border-[#E6DFD1]">
+            <div class="text-xs text-[#78716C]">最常紀錄時段</div>
+            <div id="stat-top-hour" class="font-serif-tc text-base font-bold text-[#2C2A29] mt-1.5">尚無資料</div>
+          </div>
+        </div>
+
+        <!-- SVG/CSS 雙圖表區塊 -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <!-- 左圖：情緒比例分佈 (純 SVG 圓環圖) -->
+          <div class="p-4 rounded-xl bg-[#FFFDF9] border border-[#EAE2D3]">
+            <h3 class="text-sm font-bold text-[#2C2A29] mb-3">🎨 各類情緒佔比</h3>
+            <div id="chart-mood-pie" class="flex flex-col sm:flex-row items-center justify-center gap-6 min-h-[220px]"></div>
+          </div>
+
+          <!-- 右圖：一日各整點時段情緒起伏 (純 CSS 堆疊長條圖) -->
+          <div class="p-4 rounded-xl bg-[#FFFDF9] border border-[#EAE2D3]">
+            <h3 class="text-sm font-bold text-[#2C2A29] mb-3">⏰ 一日各小時情緒起伏（07:00 - 23:00）</h3>
+            <div id="chart-hour-bars" class="min-h-[220px] flex flex-col justify-end"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ==================== 新增紀錄彈窗 (純粹對話框 + 整點時段) ==================== -->
+  <div id="record-modal" class="fixed inset-0 z-[9999] hidden bg-black/45 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="journal-card w-full max-w-md rounded-2xl p-5 shadow-2xl border border-[#DCD3BE] animate-fade-in">
+      <div class="flex items-center justify-between border-b border-[#EFE9DC] pb-3 mb-4">
+        <h3 class="font-serif-tc text-lg font-bold text-[#2C2A29]">✍️ 定格這個小時的情緒</h3>
+        <button type="button" onclick="closeRecordModal()" class="text-[#8C8276] hover:text-[#2C2A29] text-lg leading-none px-1">✕</button>
+      </div>
+
+      <div class="space-y-4">
+        <!-- 1. 選擇心情 -->
+        <div>
+          <label class="block text-xs font-bold text-[#57534E] mb-1.5">1. 這個時段的主導心情</label>
+          <div class="grid grid-cols-2 gap-2" id="mood-selector">
+            <button type="button" onclick="selectMood('calm')" data-mood="calm" class="mood-opt p-2.5 rounded-xl border text-left text-xs font-medium flex items-center gap-2 transition bg-[#E8F1EC] border-[#5B8E73] text-[#2D5A43] ring-2 ring-[#5B8E73]/30">
+              <span class="text-base">🌿</span> 平靜 / 放空
+            </button>
+            <button type="button" onclick="selectMood('happy')" data-mood="happy" class="mood-opt p-2.5 rounded-xl border text-left text-xs font-medium flex items-center gap-2 transition bg-[#FFFDF9] border-[#E5DEC9] text-[#57534E]">
+              <span class="text-base">☀️</span> 期待 / 開心
+            </button>
+            <button type="button" onclick="selectMood('anxious')" data-mood="anxious" class="mood-opt p-2.5 rounded-xl border text-left text-xs font-medium flex items-center gap-2 transition bg-[#FFFDF9] border-[#E5DEC9] text-[#57534E]">
+              <span class="text-base">🌧️</span> 焦慮 / 煩躁
+            </button>
+            <button type="button" onclick="selectMood('lonely')" data-mood="lonely" class="mood-opt p-2.5 rounded-xl border text-left text-xs font-medium flex items-center gap-2 transition bg-[#FFFDF9] border-[#E5DEC9] text-[#57534E]">
+              <span class="text-base">🌙</span> 孤獨 / 感傷
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. 整點時段 (只標註這段小時區間) & 地點名稱 -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-[#57534E] mb-1">2. 紀錄時段（一小時）</label>
+            <select id="input-hour-slot" onchange="checkExistingSlotWarning()" class="w-full px-3 py-2 rounded-xl text-xs bg-[#F9F6F0] border border-[#DCD3BE] focus:outline-none focus:border-[#D96B43] font-medium">
+              <!-- 由 JS 動態產生 00:00 - 01:00 ~ 23:00 - 24:00 -->
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-[#57534E] mb-1">3. 所在建築 / 區位</label>
+            <input type="text" id="input-place" placeholder="例如：明德樓3F、操場看台" class="w-full px-3 py-2 rounded-xl text-xs bg-[#F9F6F0] border border-[#DCD3BE] focus:outline-none focus:border-[#D96B43]" />
+          </div>
+        </div>
+
+        <!-- 同時段已紀錄提示 -->
+        <div id="slot-duplicate-notice" class="hidden px-3 py-2 rounded-xl bg-[#FDF3D7] border border-[#F3DFA4] text-[11px] text-[#855A10] flex items-center justify-between gap-2">
+          <span>💡 今天此時段已有一筆紀錄，要直接覆蓋還是保留兩筆？</span>
+          <label class="inline-flex items-center gap-1 font-bold shrink-0 cursor-pointer">
+            <input type="checkbox" id="overwrite-slot-checkbox" checked class="rounded text-[#D96B43]" />
+            <span>覆蓋舊紀錄</span>
+          </label>
+        </div>
+
+        <!-- 4. 純粹對話框 -->
+        <div>
+          <label class="block text-xs font-bold text-[#57534E] mb-1">4. 想說的話</label>
+          <textarea id="input-note" rows="3" placeholder="寫下這個小時裡，一瞬間閃過的念頭或想說的話..." class="w-full px-3 py-2.5 rounded-xl text-sm bg-[#F9F6F0] border border-[#DCD3BE] focus:outline-none focus:border-[#D96B43] resize-none leading-relaxed"></textarea>
+        </div>
+
+        <!-- 座標資訊顯示 -->
+        <div class="flex items-center justify-between text-[11px] text-[#8C8276] bg-[#F5F1E8] px-3 py-1.5 rounded-lg">
+          <span>定位座標：<span id="modal-coords-text" class="font-mono">24.98815, 121.28565</span></span>
+          <span id="modal-source-tag" class="text-[#5B8E73] font-medium">武陵校區準星</span>
+        </div>
+
+        <!-- 按鈕列 -->
+        <div class="flex items-center justify-end gap-2 pt-2">
+          <button type="button" onclick="closeRecordModal()" class="px-4 py-2 rounded-xl text-xs font-medium text-[#78716C] hover:bg-[#F3EFE6] transition">
+            取消
+          </button>
+          <button type="button" id="btn-submit-record" onclick="submitNewRecord()" class="px-5 py-2 rounded-xl text-xs font-bold bg-[#D96B43] text-white hover:bg-[#C25A34] shadow-sm transition cursor-pointer">
+            ✨ 定格此時情緒
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 自訂無刷新確認對話框 -->
+  <div id="confirm-modal" class="fixed inset-0 z-[9999] hidden bg-black/45 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="journal-card w-full max-w-xs rounded-2xl p-5 shadow-2xl border border-[#DCD3BE] text-center">
+      <div class="text-2xl mb-2">🍂</div>
+      <h4 id="confirm-title" class="font-serif-tc font-bold text-base text-[#2C2A29] mb-1">確定要刪除嗎？</h4>
+      <p id="confirm-desc" class="text-xs text-[#78716C] mb-4">刪除後這段時空紀錄將無法復原。</p>
+      <div class="flex items-center justify-center gap-2">
+        <button onclick="closeConfirmModal()" class="px-4 py-1.5 rounded-xl text-xs font-medium bg-[#F3EFE6] text-[#57534E] hover:bg-[#E8E1D3]">
+          保留
+        </button>
+        <button id="confirm-yes-btn" class="px-4 py-1.5 rounded-xl text-xs font-bold bg-[#A84327] text-white hover:bg-[#8E351D]">
+          確定刪除
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 輕量浮動提示 Toast -->
+  <div id="toast-msg" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-[9999] hidden px-4 py-2 rounded-full bg-[#2C2A29] text-white text-xs shadow-lg transition-opacity"></div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    // ==================== 1. 常數與武陵高中精準校區座標 ====================
+    const WULING_CENTER = [24.98815, 121.28565];
+    const WULING_ZOOM = 18;
+    const STORAGE_KEY = 'wuling_emotion_journal_v3';
+    const REMIND_PREF_KEY = 'wuling_hourly_remind_enabled';
+
+    const MOOD_META = {
+      calm: {
+        label: '平靜/放空',
+        emoji: '🌿',
+        color: '#5B8E73',
+        bgLight: '#E8F1EC',
+        textDark: '#2D5A43',
+        defaultNote: '在這個小時裡，靜靜待了一會兒。'
+      },
+      happy: {
+        label: '期待/開心',
+        emoji: '☀️',
+        color: '#E09F3E',
+        bgLight: '#FDF3D7',
+        textDark: '#9A6B16',
+        defaultNote: '此刻的心情帶著一點光與期待。'
+      },
+      anxious: {
+        label: '焦慮/煩躁',
+        emoji: '🌧️',
+        color: '#D96B43',
+        bgLight: '#FCE8E2',
+        textDark: '#A84327',
+        defaultNote: '心裡有點緊繃，把這份感覺先留在這裡。'
+      },
+      lonely: {
+        label: '孤獨/感傷',
+        emoji: '🌙',
+        color: '#7A6F9B',
+        bgLight: '#ECE9F6',
+        textDark: '#554982',
+        defaultNote: '有些想說的話，在這個角落輕輕放下。'
+      }
+    };
+
+    // ==================== 2. 狀態變數 ====================
+    let map;
+    let markerLayerGroup;
+    let polylineLayerGroup;
+    let gpsMarker = null;
+    let gpsAccuracyCircle = null;
+    let currentGPS = null;
+    let pendingCoords = { lat: WULING_CENTER[0], lng: WULING_CENTER[1], source: '武陵校區準星' };
+    let selectedMood = 'calm';
+    let activeFilter = 'all';
+    let isJournalStyle = true;
+    let confirmCallback = null;
+    let hourlyRemindEnabled = false;
+    let lastRemindedHourKey = '';
+
+    // 讀取本機儲存的真實紀錄
+    let entries = loadEntries();
+
+    function loadEntries() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function saveEntries() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+      } catch (e) {
+        showToast('⚠️ 瀏覽器儲存空間已滿，建議先匯出 JSON 備份');
+      }
+    }
+
+    // ==================== 3. 整點時段格式化工具 ====================
+    function formatHourSlot(hourNum) {
+      const start = String(hourNum).padStart(2, '0');
+      const end = String(hourNum + 1).padStart(2, '0');
+      return `${start}:00 - ${end}:00`;
+    }
+
+    function getTodayDateStr() {
+      const now = new Date();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      return `${now.getFullYear()}/${mm}/${dd}`;
+    }
+
+    function getShortDateStr() {
+      const now = new Date();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      return `${mm}/${dd}`;
+    }
+
+    function initHourSlotOptions() {
+      const select = document.getElementById('input-hour-slot');
+      if (!select) return;
+      select.innerHTML = '';
+      for (let h = 0; h < 24; h++) {
+        const opt = document.createElement('option');
+        opt.value = h;
+        opt.textContent = formatHourSlot(h);
+        select.appendChild(opt);
+      }
+    }
+
+    // ==================== 4. 初始化地圖與介面 ====================
+    document.addEventListener('DOMContentLoaded', () => {
+      initHourSlotOptions();
+      initMap();
+      requestGPS(false);
+      updateAllViews();
+      initHourlyReminderSystem();
+
+      // 點擊外部自動關閉「其他」選單
+      document.addEventListener('click', (e) => {
+        const container = document.getElementById('more-menu-container');
+        if (container && !container.contains(e.target)) {
+          closeMoreMenu();
+        }
+      });
+    });
+
+    function toggleMoreMenu(e) {
+      if (e) e.stopPropagation();
+      const dropdown = document.getElementById('more-menu-dropdown');
+      dropdown.classList.toggle('hidden');
+    }
+
+    function closeMoreMenu() {
+      const dropdown = document.getElementById('more-menu-dropdown');
+      if (dropdown) dropdown.classList.add('hidden');
+    }
+
+    function initMap() {
+      map = L.map('map', {
+        center: WULING_CENTER,
+        zoom: WULING_ZOOM,
+        maxZoom: 19,
+        zoomControl: true
+      });
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap'
+      }).addTo(map);
+
+      polylineLayerGroup = L.layerGroup().addTo(map);
+      markerLayerGroup = L.layerGroup().addTo(map);
+
+      // 點擊地圖任意建築直接落點並開啟該小時紀錄表單
+      map.on('click', async (e) => {
+        const { lat, lng } = e.latlng;
+        pendingCoords = {
+          lat: Number(lat.toFixed(6)),
+          lng: Number(lng.toFixed(6)),
+          source: '點擊地圖區位'
+        };
+        openRecordModalWithCoords(pendingCoords);
+        reverseGeocodePlace(lat, lng);
+      });
+
+      setTimeout(() => map.invalidateSize(), 250);
+    }
+
+    // ==================== 5. 每小時整點提醒系統 ====================
+    function initHourlyReminderSystem() {
+      const savedPref = localStorage.getItem(REMIND_PREF_KEY);
+      if (savedPref === 'true') {
+        hourlyRemindEnabled = true;
+        document.getElementById('hourly-remind-toggle').checked = true;
+      }
+      updateHourlyCountdown();
+      setInterval(checkHourlyTick, 10000);
+    }
+
+    function toggleHourlyReminder() {
+      const checkbox = document.getElementById('hourly-remind-toggle');
+      hourlyRemindEnabled = checkbox.checked;
+      localStorage.setItem(REMIND_PREF_KEY, String(hourlyRemindEnabled));
+
+      if (hourlyRemindEnabled) {
+        if ('Notification' in window && Notification.permission === 'default') {
+          Notification.requestPermission();
+        }
+        playGentleChime();
+        showToast('🔔 已開啟每小時整點紀錄提醒');
+      } else {
+        showToast('已關閉整點提醒');
+      }
+      updateHourlyCountdown();
+    }
+
+    function updateHourlyCountdown() {
+      const badge = document.getElementById('hourly-countdown');
+      if (!hourlyRemindEnabled) {
+        badge.textContent = '已關閉';
+        badge.className = 'text-[11px] px-2 py-0.5 rounded-full bg-[#F3EFE6] text-[#6B635B] whitespace-nowrap';
+        return;
+      }
+      const now = new Date();
+      const nextHour = (now.getHours() + 1) % 24;
+      const minsLeft = 60 - now.getMinutes();
+      badge.textContent = `距 ${String(nextHour).padStart(2, '0')}:00 剩 ${minsLeft} 分`;
+      badge.className = 'text-[11px] px-2 py-0.5 rounded-full bg-[#FCE8E2] text-[#A84327] font-medium whitespace-nowrap';
+    }
+
+    function checkHourlyTick() {
+      updateHourlyCountdown();
+      if (!hourlyRemindEnabled) return;
+
+      const now = new Date();
+      const mins = now.getMinutes();
+      const hourKey = `${getTodayDateStr()}-${now.getHours()}`;
+
+      if (mins === 0 && lastRemindedHourKey !== hourKey) {
+        lastRemindedHourKey = hourKey;
+        triggerHourlyReminder(false);
+      }
+    }
+
+    function triggerHourlyReminder(isTest = false) {
+      playGentleChime();
+      const nowHour = new Date().getHours();
+      const prevHour = (nowHour + 23) % 24;
+      const targetHour = isTest ? nowHour : prevHour;
+      const slotText = formatHourSlot(targetHour);
+
+      const banner = document.getElementById('hourly-banner');
+      const bannerText = document.getElementById('hourly-banner-text');
+      bannerText.textContent = isTest
+        ? `試聽提醒：現在是 ${slotText}，定格一下這小時的情緒吧！`
+        : `整點到了！來記錄剛剛 ${slotText} 這一小時的心情與想說的話吧。`;
+      banner.classList.remove('hidden');
+
+      if (!isTest && 'Notification' in window && Notification.permission === 'granted') {
+        new Notification('📖 情緒定格地圖 · 整點提醒', {
+          body: `來記錄 ${slotText} 這一小時的心情與所在位置吧！`
+        });
+      }
+    }
+
+    function dismissHourlyBanner() {
+      document.getElementById('hourly-banner').classList.add('hidden');
+    }
+
+    function openRecordFromBanner() {
+      dismissHourlyBanner();
+      openRecordModal();
+    }
+
+    function playGentleChime() {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const notes = [523.25, 659.25, 783.99];
+        notes.forEach((freq, i) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.14);
+          gain.gain.setValueAtTime(0.001, ctx.currentTime + i * 0.14);
+          gain.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + i * 0.14 + 0.04);
+          gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + i * 0.14 + 0.7);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(ctx.currentTime + i * 0.14);
+          osc.stop(ctx.currentTime + i * 0.14 + 0.75);
+        });
+      } catch (e) {}
+    }
+
+    // ==================== 6. 真實 GPS 定位與逆向地理編碼 ====================
+    function requestGPS(flyToUser = true) {
+      const icon = document.getElementById('gps-status-icon');
+      const text = document.getElementById('gps-status-text');
+
+      if (!navigator.geolocation) {
+        icon.textContent = '⚠️';
+        text.textContent = '此瀏覽器不支援 GPS，請使用地圖準星或點擊落點';
+        return;
+      }
+
+      icon.textContent = '⏳';
+      text.textContent = '正在抓取真實 GPS 位置...';
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude, longitude, accuracy } = pos.coords;
+          currentGPS = {
+            lat: Number(latitude.toFixed(6)),
+            lng: Number(longitude.toFixed(6)),
+            accuracy: Math.round(accuracy)
+          };
+
+          icon.textContent = '🛰️';
+          text.textContent = `GPS 已鎖定（誤差約 ±${currentGPS.accuracy}m）`;
+
+          updateGPSMarkerOnMap();
+
+          if (flyToUser) {
+            map.flyTo([currentGPS.lat, currentGPS.lng], 18, { duration: 0.8 });
+            showToast('🎯 已定位至您目前的真實 GPS 位置');
+          }
+        },
+        () => {
+          icon.textContent = '🧭';
+          text.textContent = '目前為手動定位模式（點擊地圖或移動中心準星即可落點）';
+          if (flyToUser) {
+            showToast('無法讀取硬體 GPS，請直接點擊地圖上的建築物落點');
+          }
+        },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 10000 }
+      );
+    }
+
+    function updateGPSMarkerOnMap() {
+      if (!currentGPS || !map) return;
+      if (gpsMarker) map.removeLayer(gpsMarker);
+      if (gpsAccuracyCircle) map.removeLayer(gpsAccuracyCircle);
+
+      const gpsIcon = L.divIcon({
+        className: '',
+        html: '<div class="gps-pulse-dot" title="您目前的 GPS 位置"></div>',
+        iconSize: [14, 14],
+        iconAnchor: [7, 7]
+      });
+
+      gpsMarker = L.marker([currentGPS.lat, currentGPS.lng], { icon: gpsIcon }).addTo(map);
+      gpsAccuracyCircle = L.circle([currentGPS.lat, currentGPS.lng], {
+        radius: Math.min(currentGPS.accuracy, 50),
+        color: '#2563EB',
+        fillColor: '#3B82F6',
+        fillOpacity: 0.1,
+        weight: 1
+      }).addTo(map);
+    }
+
+    async function reverseGeocodePlace(lat, lng) {
+      const placeInput = document.getElementById('input-place');
+      if (!placeInput) return;
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&accept-language=zh-TW`);
+        const data = await res.json();
+        if (data && !placeInput.value.trim()) {
+          const addr = data.address || {};
+          const name = data.name || addr.building || addr.amenity || addr.school || addr.road || '';
+          if (name) {
+            placeInput.value = name;
+          }
+        }
+      } catch (e) {}
+    }
+
+    // ==================== 7. 視圖與地圖底圖控制 ====================
+    function centerToWuling() {
+      map.flyTo(WULING_CENTER, WULING_ZOOM, { duration: 0.8 });
+      showToast('🏫 已回到武陵高中校區正中央');
+    }
+
+    function toggleMapStyle() {
+      const mapEl = document.getElementById('map');
+      const btn = document.getElementById('btn-map-style');
+      isJournalStyle = !isJournalStyle;
+      if (isJournalStyle) {
+        mapEl.classList.add('journal-tiles');
+        btn.innerHTML = '<span>📜</span><span>切換原始底圖</span>';
+      } else {
+        mapEl.classList.remove('journal-tiles');
+        btn.innerHTML = '<span>🗺️</span><span>切換手帳底圖</span>';
+      }
+    }
+
+    function switchTab(tab) {
+      const mapView = document.getElementById('view-map');
+      const chartView = document.getElementById('view-chart');
+      const mapBtn = document.getElementById('tab-map-btn');
+      const chartBtn = document.getElementById('tab-chart-btn');
+
+      if (tab === 'map') {
+        mapView.classList.remove('hidden');
+        chartView.classList.add('hidden');
+        mapBtn.className = 'px-3 py-1.5 rounded-xl text-xs sm:text-sm font-medium bg-[#2C2A29] text-white shadow-sm transition whitespace-nowrap';
+        chartBtn.className = 'px-3 py-1.5 rounded-xl text-xs sm:text-sm font-medium bg-[#F3EFE6] text-[#57534E] hover:bg-[#E8E1D3] transition whitespace-nowrap';
+        setTimeout(() => map.invalidateSize(), 150);
+      } else {
+        mapView.classList.add('hidden');
+        chartView.classList.remove('hidden');
+        chartBtn.className = 'px-3 py-1.5 rounded-xl text-xs sm:text-sm font-medium bg-[#2C2A29] text-white shadow-sm transition whitespace-nowrap';
+        mapBtn.className = 'px-3 py-1.5 rounded-xl text-xs sm:text-sm font-medium bg-[#F3EFE6] text-[#57534E] hover:bg-[#E8E1D3] transition whitespace-nowrap';
+        renderAnalyticsCharts();
+      }
+    }
+
+    // ==================== 8. 新增紀錄表單邏輯 ====================
+    function openRecordModal() {
+      if (currentGPS) {
+        pendingCoords = { lat: currentGPS.lat, lng: currentGPS.lng, source: '真實 GPS 自動鎖定' };
+      } else {
+        const c = map.getCenter();
+        pendingCoords = { lat: Number(c.lat.toFixed(6)), lng: Number(c.lng.toFixed(6)), source: '地圖中心準星' };
+      }
+      openRecordModalWithCoords(pendingCoords);
+      reverseGeocodePlace(pendingCoords.lat, pendingCoords.lng);
+    }
+
+    function openRecordModalWithCoords(coords) {
+      const nowHour = new Date().getHours();
+      document.getElementById('input-hour-slot').value = nowHour;
+      document.getElementById('input-place').value = '';
+      document.getElementById('input-note').value = '';
+      document.getElementById('modal-coords-text').textContent = `${coords.lat}, ${coords.lng}`;
+      document.getElementById('modal-source-tag').textContent = coords.source;
+      selectMood('calm');
+      checkExistingSlotWarning();
+      document.getElementById('record-modal').classList.remove('hidden');
+    }
+
+    function closeRecordModal() {
+      document.getElementById('record-modal').classList.add('hidden');
+    }
+
+    function selectMood(moodKey) {
+      selectedMood = moodKey;
+      document.querySelectorAll('.mood-opt').forEach((btn) => {
+        const key = btn.getAttribute('data-mood');
+        const meta = MOOD_META[key];
+        if (key === moodKey) {
+          btn.style.backgroundColor = meta.bgLight;
+          btn.style.borderColor = meta.color;
+          btn.style.color = meta.textDark;
+          btn.classList.add('ring-2');
+        } else {
+          btn.style.backgroundColor = '#FFFDF9';
+          btn.style.borderColor = '#E5DEC9';
+          btn.style.color = '#57534E';
+          btn.classList.remove('ring-2');
+        }
+      });
+    }
+
+    function checkExistingSlotWarning() {
+      const hourNum = Number(document.getElementById('input-hour-slot').value);
+      const todayFull = getTodayDateStr();
+      const exists = entries.some((item) => item.fullDate === todayFull && item.hour === hourNum);
+      const notice = document.getElementById('slot-duplicate-notice');
+      if (exists) {
+        notice.classList.remove('hidden');
+      } else {
+        notice.classList.add('hidden');
+      }
+    }
+
+    function submitNewRecord() {
+      const hourNum = Number(document.getElementById('input-hour-slot').value);
+      const slotLabel = formatHourSlot(hourNum);
+      const placeRaw = document.getElementById('input-place').value.trim();
+      const noteRaw = document.getElementById('input-note').value.trim();
+      const meta = MOOD_META[selectedMood] || MOOD_META.calm;
+
+      const place = placeRaw || '武陵校園區位';
+      const note = noteRaw || meta.defaultNote;
+      const fullDate = getTodayDateStr();
+      const shortDate = getShortDateStr();
+
+      const shouldOverwrite = document.getElementById('overwrite-slot-checkbox').checked;
+      const existingIdx = entries.findIndex((item) => item.fullDate === fullDate && item.hour === hourNum);
+
+      const newEntry = {
+        id: existingIdx !== -1 && shouldOverwrite ? entries[existingIdx].id : Date.now(),
+        mood: selectedMood,
+        place: place,
+        note: note,
+        hour: hourNum,
+        slotLabel: slotLabel,
+        date: shortDate,
+        fullDate: fullDate,
+        lat: Number(pendingCoords.lat),
+        lng: Number(pendingCoords.lng)
+      };
+
+      if (existingIdx !== -1 && shouldOverwrite) {
+        entries[existingIdx] = newEntry;
+      } else {
+        entries.unshift(newEntry);
+      }
+
+      saveEntries();
+      closeRecordModal();
+
+      if (activeFilter !== 'all' && activeFilter !== selectedMood) {
+        setFilter('all');
+      } else {
+        updateAllViews();
+      }
+
+      if (map) {
+        map.flyTo([newEntry.lat, newEntry.lng], 18, { duration: 0.6 });
+        setTimeout(() => {
+          markerLayerGroup.eachLayer((layer) => {
+            if (layer.entryId === newEntry.id) {
+              layer.openPopup();
+            }
+          });
+        }, 650);
+      }
+
+      showToast(`✨ 已定格 ${slotLabel} 的「${meta.label}」`);
+    }
+
+    // ==================== 9. 篩選、地圖光點與時間軸渲染 ====================
+    function setFilter(filterKey) {
+      activeFilter = filterKey;
+      document.querySelectorAll('.filter-pill').forEach((pill) => {
+        const key = pill.getAttribute('data-filter');
+        if (key === filterKey) {
+          pill.classList.add('ring-2', 'ring-offset-1', 'ring-[#2C2A29]');
+        } else {
+          pill.classList.remove('ring-2', 'ring-offset-1', 'ring-[#2C2A29]');
+        }
+      });
+      updateAllViews();
+    }
+
+    function updateAllViews() {
+      updateFilterCounts();
+      renderMarkers();
+      renderTimeline();
+    }
+
+    function updateFilterCounts() {
+      document.getElementById('count-all').textContent = entries.length;
+      document.getElementById('count-calm').textContent = entries.filter((e) => e.mood === 'calm').length;
+      document.getElementById('count-happy').textContent = entries.filter((e) => e.mood === 'happy').length;
+      document.getElementById('count-anxious').textContent = entries.filter((e) => e.mood === 'anxious').length;
+      document.getElementById('count-lonely').textContent = entries.filter((e) => e.mood === 'lonely').length;
+    }
+
+    function getFilteredEntries() {
+      if (activeFilter === 'all') return entries;
+      return entries.filter((e) => e.mood === activeFilter);
+    }
+
+    function renderMarkers() {
+      if (!markerLayerGroup || !polylineLayerGroup) return;
+      markerLayerGroup.clearLayers();
+      polylineLayerGroup.clearLayers();
+
+      const filtered = getFilteredEntries();
+      const showLine = document.getElementById('toggle-polyline').checked;
+
+      const sortedAsc = [...filtered].sort((a, b) => a.id - b.id);
+      if (showLine && sortedAsc.length >= 2) {
+        const latlngs = sortedAsc.map((e) => [e.lat, e.lng]);
+        const lineColor = activeFilter !== 'all' && MOOD_META[activeFilter]
+          ? MOOD_META[activeFilter].color
+          : '#8C7A6B';
+        L.polyline(latlngs, {
+          color: lineColor,
+          weight: 2.5,
+          opacity: 0.78,
+          dashArray: '6, 6'
+        }).addTo(polylineLayerGroup);
+      }
+
+      filtered.forEach((item) => {
+        const meta = MOOD_META[item.mood] || MOOD_META.calm;
+        const icon = L.divIcon({
+          className: '',
+          html: `<div class="mood-pin" style="background-color: ${meta.color};">${meta.emoji}</div>`,
+          iconSize: [26, 26],
+          iconAnchor: [13, 13]
+        });
+
+        const slotDisplay = item.slotLabel || formatHourSlot(item.hour ?? 8);
+        const marker = L.marker([item.lat, item.lng], { icon });
+        marker.entryId = item.id;
+        marker.bindPopup(`
+          <div>
+            <div class="sticker-header">
+              <span class="sticker-badge" style="background:${meta.bgLight}; color:${meta.textDark};">${meta.emoji} ${meta.label}</span>
+              <span class="sticker-time">${item.date} · ${slotDisplay}</span>
+            </div>
+            <div class="sticker-place">📍 ${escapeHTML(item.place)}</div>
+            <div class="sticker-note">"${escapeHTML(item.note)}"</div>
+          </div>
+        `, { maxWidth: 185, minWidth: 120, autoPanPadding: [24, 24] });
+        marker.addTo(markerLayerGroup);
+      });
+    }
+
+    function renderTimeline() {
+      const container = document.getElementById('timeline-list');
+      const filtered = getFilteredEntries();
+
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div class="h-full flex flex-col items-center justify-center text-center px-6 py-10 text-[#8C8276]">
+            <div class="text-3xl mb-2">🍃</div>
+            <p class="text-sm font-medium text-[#57534E]">目前還沒有定格的情緒軌跡</p>
+            <p class="text-xs mt-1 leading-relaxed">點擊上方「＋ 定格此時情緒」或直接點擊左側武陵高中地圖上的建築，記錄這個小時的心情與想說的話。</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = filtered.map((item) => {
+        const meta = MOOD_META[item.mood] || MOOD_META.calm;
+        const slotDisplay = item.slotLabel || formatHourSlot(item.hour ?? 8);
+        return `
+          <div onclick="focusEntryOnMap(${item.id})" class="p-3 rounded-xl bg-[#FFFDF9] border border-[#EAE2D3] hover:border-[#D96B43] transition cursor-pointer group">
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <div class="flex items-center gap-1.5 min-w-0">
+                <span class="px-2 py-0.5 rounded-full text-[11px] font-bold shrink-0" style="background:${meta.bgLight}; color:${meta.textDark};">
+                  ${meta.emoji} ${meta.label}
+                </span>
+                <span class="text-xs font-bold text-[#2C2A29] truncate">📍 ${escapeHTML(item.place)}</span>
+              </div>
+              <span class="text-[11px] font-mono text-[#6B635B] bg-[#F5F1E8] px-2 py-0.5 rounded-md shrink-0">${item.date} · ${slotDisplay}</span>
+            </div>
+            <p class="text-xs text-[#44403C] leading-relaxed mb-2">"${escapeHTML(item.note)}"</p>
+            <div class="flex items-center justify-between text-[11px] text-[#8C8276] pt-1.5 border-t border-[#F4EFE4]">
+              <span class="font-mono text-[10px]">${item.lat.toFixed(5)}, ${item.lng.toFixed(5)}</span>
+              <button onclick="event.stopPropagation(); askDeleteEntry(${item.id})" class="text-[#A84327] opacity-70 hover:opacity-100 transition">
+                🗑️ 刪除
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function focusEntryOnMap(id) {
+      const target = entries.find((e) => e.id === id);
+      if (!target) return;
+      map.flyTo([target.lat, target.lng], 18, { duration: 0.6 });
+      markerLayerGroup.eachLayer((layer) => {
+        if (layer.entryId === id) {
+          layer.openPopup();
+        }
+      });
+    }
+
+    // ==================== 10. 刪除與備份還原 ====================
+    function askDeleteEntry(id) {
+      document.getElementById('confirm-title').textContent = '確定刪除這筆情緒紀錄？';
+      document.getElementById('confirm-desc').textContent = '刪除後將同步從地圖與時間軸移除。';
+      confirmCallback = () => {
+        entries = entries.filter((e) => e.id !== id);
+        saveEntries();
+        updateAllViews();
+        showToast('🗑️ 已刪除該筆紀錄');
+      };
+      document.getElementById('confirm-modal').classList.remove('hidden');
+    }
+
+    function askClearAll() {
+      if (entries.length === 0) {
+        showToast('目前沒有可清空的紀錄');
+        return;
+      }
+      document.getElementById('confirm-title').textContent = '確定清空全部紀錄？';
+      document.getElementById('confirm-desc').textContent = '建議清空前先匯出 JSON 備份檔保存。';
+      confirmCallback = () => {
+        entries = [];
+        saveEntries();
+        updateAllViews();
+        renderAnalyticsCharts();
+        showToast('🧹 已清空全部紀錄');
+      };
+      document.getElementById('confirm-modal').classList.remove('hidden');
+    }
+
+    function closeConfirmModal() {
+      document.getElementById('confirm-modal').classList.add('hidden');
+      confirmCallback = null;
+    }
+
+    document.getElementById('confirm-yes-btn').addEventListener('click', () => {
+      if (confirmCallback) confirmCallback();
+      closeConfirmModal();
+    });
+
+    function exportJSON() {
+      if (entries.length === 0) {
+        showToast('目前尚無紀錄可匯出');
+        return;
+      }
+      const blob = new Blob([JSON.stringify(entries, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `武陵情緒定格備份_${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('💾 已下載 JSON 備份檔');
+    }
+
+    function triggerImportJSON() {
+      document.getElementById('import-json-input').click();
+    }
+
+    function handleImportJSON(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const imported = JSON.parse(e.target.result);
+          if (!Array.isArray(imported)) throw new Error('格式錯誤');
+          const existingIds = new Set(entries.map((item) => item.id));
+          let addedCount = 0;
+          imported.forEach((item) => {
+            if (item && item.lat && item.lng && !existingIds.has(item.id)) {
+              entries.push(item);
+              addedCount++;
+            }
+          });
+          entries.sort((a, b) => b.id - a.id);
+          saveEntries();
+          updateAllViews();
+          showToast(`📂 成功匯入 ${addedCount} 筆歷史紀錄`);
+        } catch (err) {
+          showToast('⚠️ 備份檔格式不正確，請選擇原本匯出的 JSON 檔');
+        }
+        event.target.value = '';
+      };
+      reader.readAsText(file);
+    }
+
+    function exportCSV() {
+      if (entries.length === 0) {
+        showToast('目前尚無紀錄可匯出');
+        return;
+      }
+      const headers = ['日期', '紀錄時段', '心情分類', '地點名稱', '想說的話', '緯度', '經度'];
+      const rows = entries.map((e) => {
+        const meta = MOOD_META[e.mood] || MOOD_META.calm;
+        const slot = e.slotLabel || formatHourSlot(e.hour ?? 8);
+        return [
+          e.fullDate || e.date,
+          slot,
+          meta.label,
+          `"${(e.place || '').replace(/"/g, '""')}"`,
+          `"${(e.note || '').replace(/"/g, '""')}"`,
+          e.lat,
+          e.lng
+        ].join(',');
+      });
+      const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `武陵情緒軌跡統計_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('📥 已匯出 CSV 表格');
+    }
+
+    // ==================== 11. 數據分析圖表 (SVG 圓環 + 整點時段長條) ====================
+    function renderAnalyticsCharts() {
+      const total = entries.length;
+      document.getElementById('stat-total').textContent = `${total} 筆`;
+
+      if (total === 0) {
+        document.getElementById('stat-top-mood').textContent = '尚無資料';
+        document.getElementById('stat-top-place').textContent = '尚無資料';
+        document.getElementById('stat-top-hour').textContent = '尚無資料';
+        document.getElementById('chart-mood-pie').innerHTML = '<p class="text-xs text-[#8C8276]">累積紀錄後將自動繪製情緒比例圓環圖</p>';
+        document.getElementById('chart-hour-bars').innerHTML = '<p class="text-xs text-[#8C8276] text-center my-auto">累積紀錄後將自動繪製一日各小時情緒起伏圖</p>';
+        return;
+      }
+
+      const moodCounts = { calm: 0, happy: 0, anxious: 0, lonely: 0 };
+      const placeCounts = {};
+      const hourCounts = {};
+
+      entries.forEach((e) => {
+        if (moodCounts[e.mood] !== undefined) moodCounts[e.mood]++;
+        placeCounts[e.place] = (placeCounts[e.place] || 0) + 1;
+        const h = e.hour ?? 8;
+        hourCounts[h] = (hourCounts[h] || 0) + 1;
+      });
+
+      const topMoodKey = Object.keys(moodCounts).reduce((a, b) => (moodCounts[a] >= moodCounts[b] ? a : b));
+      document.getElementById('stat-top-mood').textContent = `${MOOD_META[topMoodKey].emoji} ${MOOD_META[topMoodKey].label}`;
+
+      const topPlace = Object.keys(placeCounts).reduce((a, b) => (placeCounts[a] >= placeCounts[b] ? a : b));
+      document.getElementById('stat-top-place').textContent = `${topPlace} (${placeCounts[topPlace]}次)`;
+
+      const topHour = Object.keys(hourCounts).reduce((a, b) => (hourCounts[a] >= hourCounts[b] ? a : b));
+      document.getElementById('stat-top-hour').textContent = formatHourSlot(Number(topHour));
+
+      // SVG 圓環圖
+      const radius = 56;
+      const circumference = 2 * Math.PI * radius;
+      let offset = 0;
+      const segments = Object.keys(MOOD_META).map((key) => {
+        const count = moodCounts[key];
+        const pct = count / total;
+        const dash = pct * circumference;
+        const seg = `<circle cx="75" cy="75" r="${radius}" fill="transparent" stroke="${MOOD_META[key].color}" stroke-width="20" stroke-dasharray="${dash} ${circumference}" stroke-dashoffset="${-offset}" transform="rotate(-90 75 75)" />`;
+        offset += dash;
+        return seg;
+      }).join('');
+
+      const legendHTML = Object.keys(MOOD_META).map((key) => {
+        const count = moodCounts[key];
+        const pct = Math.round((count / total) * 100);
+        return `
+          <div class="flex items-center justify-between gap-4 text-xs">
+            <span class="flex items-center gap-1.5">
+              <span class="w-2.5 h-2.5 rounded-full inline-block" style="background:${MOOD_META[key].color}"></span>
+              <span>${MOOD_META[key].emoji} ${MOOD_META[key].label}</span>
+            </span>
+            <span class="font-mono font-bold text-[#2C2A29]">${count} 筆 (${pct}%)</span>
+          </div>
+        `;
+      }).join('');
+
+      document.getElementById('chart-mood-pie').innerHTML = `
+        <div class="relative w-[150px] h-[150px] shrink-0">
+          <svg viewBox="0 0 150 150" class="w-full h-full">${segments}</svg>
+          <div class="absolute inset-0 flex flex-col items-center justify-center">
+            <span class="text-[10px] text-[#78716C]">總計</span>
+            <span class="font-serif-tc text-lg font-bold text-[#2C2A29]">${total}</span>
+          </div>
+        </div>
+        <div class="space-y-2 w-full max-w-[200px]">${legendHTML}</div>
+      `;
+
+      // 07:00 - 23:00 各小時長條圖
+      const hours = [];
+      for (let h = 7; h <= 23; h++) hours.push(h);
+      const maxHourCount = Math.max(1, ...hours.map((h) => entries.filter((e) => (e.hour ?? 8) === h).length));
+
+      const barsHTML = hours.map((h) => {
+        const slotEntries = entries.filter((e) => (e.hour ?? 8) === h);
+        const stacked = Object.keys(MOOD_META).map((mKey) => {
+          const cnt = slotEntries.filter((e) => e.mood === mKey).length;
+          if (cnt === 0) return '';
+          const hPct = (cnt / maxHourCount) * 140;
+          return `<div style="height:${hPct}px; background:${MOOD_META[mKey].color};" title="${formatHourSlot(h)} ${MOOD_META[mKey].label}: ${cnt}筆"></div>`;
+        }).join('');
+
+        return `
+          <div class="flex-1 flex flex-col items-center justify-end h-[170px] min-w-[14px]">
+            <div class="w-full max-w-[18px] rounded-t-sm overflow-hidden flex flex-col-reverse bg-[#F3EFE6]">
+              ${stacked}
+            </div>
+            <span class="text-[9px] font-mono text-[#78716C] mt-1.5">${String(h).padStart(2, '0')}</span>
+          </div>
+        `;
+      }).join('');
+
+      document.getElementById('chart-hour-bars').innerHTML = `
+        <div class="flex items-end gap-1 pt-2 border-b border-[#E5DEC9] pb-1">${barsHTML}</div>
+        <div class="text-[10px] text-[#8C8276] text-right mt-1.5">橫軸為整點起始小時（如 08 代表 08:00 - 09:00）</div>
+      `;
+    }
+
+    // ==================== 12. 工具函式 ====================
+    function showToast(msg) {
+      const toast = document.getElementById('toast-msg');
+      toast.textContent = msg;
+      toast.classList.remove('hidden');
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => {
+        toast.classList.add('hidden');
+      }, 2800);
+    }
+
+    function escapeHTML(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>
